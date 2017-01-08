@@ -18,20 +18,80 @@ class MasterViewController: UITableViewController, NSFetchedResultsControllerDel
   override func viewDidLoad() {
     super.viewDidLoad()
     // Do any additional setup after loading the view, typically from a nib.
-    self.navigationItem.leftBarButtonItem = self.editButtonItem
-
-    let addButton = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(insertNewObject(_:)))
-    self.navigationItem.rightBarButtonItem = addButton
-    if let split = self.splitViewController {
-        let controllers = split.viewControllers
-        self.detailViewController = (controllers[controllers.count-1] as! UINavigationController).topViewController as? DetailViewController
+    
+    let url = URL(string: "https://www.googleapis.com/blogger/v3/blogs/10861780/posts?key=AIzaSyCYCg48wbNhyb0CwIgGB8obg7D-s8yGYu4")!
+    let task = URLSession.shared.dataTask(with: url) { (data, response, error) in
+      if error != nil {
+        print(error)
+      } else {
+        if let dataContent = data {
+          
+          do {
+            let jsonResult = try JSONSerialization.jsonObject(with: dataContent, options: JSONSerialization.ReadingOptions.mutableContainers) as! NSDictionary
+            print(jsonResult)
+            //if let items = jsonResult["items"] as? NSArray {
+            if let items = (jsonResult as! NSDictionary)["items"] as? NSArray {
+              
+              let context = self.fetchedResultsController.managedObjectContext
+              let request = NSFetchRequest<Event>(entityName: "Event")
+              
+              do {
+                let results = try context.fetch(request)
+                if results.count > 0 {
+                  for result in results {
+                    context.delete(result)
+                    
+                    do {
+                      try context.save()
+                    } catch {
+                      print("Specifiec delete error")
+                    }
+                    
+                  }
+                }
+              } catch {
+                print("Delete fails")
+              }
+              
+              //for item in items {
+              for item in items {
+                if let item = item as? NSDictionary {
+                print(item["published"])
+                print(item["title"])
+                print(item["content"])
+                
+                
+                
+                let newEvent = Event(context: context)
+                
+                // If appropriate, configure the new managed object.
+                newEvent.timestamp = NSDate()
+                newEvent.setValue(item["published"] as! String, forKey: "published")
+                newEvent.setValue(item["title"] as! String, forKey: "title")
+                newEvent.setValue(item["content"] as! String, forKey: "content")
+                
+                // Save the context.
+                do {
+                  try context.save()
+                } catch {
+                  // Replace this implementation with code to handle the error appropriately.
+                  // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
+                  let nserror = error as NSError
+                  fatalError("Unresolved error \(nserror), \(nserror.userInfo)")
+                }
+                }
+              }
+            }
+          } catch {
+            print("JSON FAILED")
+          }
+        }
+      }
     }
-  }
-
-  override func viewWillAppear(_ animated: Bool) {
-    self.clearsSelectionOnViewWillAppear = self.splitViewController!.isCollapsed
-    super.viewWillAppear(animated)
-  }
+    task.resume()
+    
+    
+      }
 
   override func didReceiveMemoryWarning() {
     super.didReceiveMemoryWarning()
@@ -90,27 +150,11 @@ class MasterViewController: UITableViewController, NSFetchedResultsControllerDel
 
   override func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
     // Return false if you do not want the specified item to be editable.
-    return true
-  }
-
-  override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCellEditingStyle, forRowAt indexPath: IndexPath) {
-    if editingStyle == .delete {
-        let context = self.fetchedResultsController.managedObjectContext
-        context.delete(self.fetchedResultsController.object(at: indexPath))
-            
-        do {
-            try context.save()
-        } catch {
-            // Replace this implementation with code to handle the error appropriately.
-            // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-            let nserror = error as NSError
-            fatalError("Unresolved error \(nserror), \(nserror.userInfo)")
-        }
-    }
+    return false
   }
 
   func configureCell(_ cell: UITableViewCell, withEvent event: Event) {
-    cell.textLabel!.text = event.timestamp!.description
+    cell.textLabel!.text = event.value(forKey: "title") as? String
   }
 
   // MARK: - Fetched results controller
@@ -126,7 +170,7 @@ class MasterViewController: UITableViewController, NSFetchedResultsControllerDel
       fetchRequest.fetchBatchSize = 20
       
       // Edit the sort key as appropriate.
-      let sortDescriptor = NSSortDescriptor(key: "timestamp", ascending: false)
+      let sortDescriptor = NSSortDescriptor(key: "published", ascending: false)
       
       fetchRequest.sortDescriptors = [sortDescriptor]
       
